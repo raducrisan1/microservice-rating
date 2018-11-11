@@ -21,6 +21,13 @@ message StockInfoResponse {
     repeated Indicator CciData = 6;     //Commodity Channel Index
 }
 
+message StockRating {
+    string stockname = 1;
+    int32 rating = 2;
+    int64 timestamp = 3;
+    bool islongposition = 4;
+}
+
 service StockInfoService {
     rpc StockInfo(StockInfoRequest) returns (StockInfoResponse) {}
 }
