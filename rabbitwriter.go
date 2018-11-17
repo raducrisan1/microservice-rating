@@ -2,20 +2,23 @@ package main
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/raducrisan1/microservice-rating/stockinfo"
 	"github.com/streadway/amqp"
 )
 
-func setupRabbitMqWriter() (*amqp.Queue, *amqp.Channel, error) {
+func newRabbitMqWriter() (*amqp.Queue, *amqp.Channel, *amqp.Connection, error) {
 	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
 	failOnError(err, "could not open the connection to rabbitmq exchange")
-	defer conn.Close()
 
 	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
+	if err != nil {
+		log.Fatalf("%s: %s", "Failed to open a rabbitmq channel", err)
+		conn.Close()
+		panic("Failed to open a rabbitmq channel")
+	}
 
 	q, err := ch.QueueDeclare(
 		"StockRatingData",
@@ -24,8 +27,8 @@ func setupRabbitMqWriter() (*amqp.Queue, *amqp.Channel, error) {
 		false,
 		false,
 		nil)
-	failOnError(err, "Failed to declare a queue")
-	return &q, ch, err
+
+	return &q, ch, conn, err
 }
 
 func sendMessage(msg *stockinfo.StockRating, q *amqp.Queue, ch *amqp.Channel) error {
@@ -42,5 +45,6 @@ func sendMessage(msg *stockinfo.StockRating, q *amqp.Queue, ch *amqp.Channel) er
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        content})
+
 	return err
 }

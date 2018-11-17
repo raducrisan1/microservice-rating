@@ -25,11 +25,10 @@ func main() {
 
 	stockInfoClient := stockinfo.NewStockInfoServiceClient(conn)
 
-	rabbitQueue, rabbitChannel, err := setupRabbitMqWriter()
+	rabbitQueue, rabbitChannel, rabbitConn, err := newRabbitMqWriter()
 	failOnError(err, "Could not setup rabbitMq link to write data")
+	defer rabbitConn.Close()
 	defer rabbitChannel.Close()
-
-	//every 5 seconds, a call to stockinfo microservice is made.
 
 	impulse := make(chan int, 2)
 
@@ -37,6 +36,7 @@ func main() {
 		impulse <- 1
 	}()
 
+	fmt.Printf("The rating node started")
 	ticker := time.Tick(time.Second * 3)
 	osstop := setupsignal()
 	stop := false
@@ -52,6 +52,7 @@ func main() {
 			req.Start = startTime.Unix()
 			req.End = endTime.Unix()
 			req.Resolution = 300
+			//every 3 seconds, a call to stockinfo microservice is made.
 			res, err := stockInfoClient.StockInfo(context.Background(), req)
 			if err != nil {
 				fmt.Printf("An error occurred receiving data from gRPC stockinfo: %s\n", err)
@@ -70,7 +71,10 @@ func main() {
 				continue
 			}
 
-			err = sendMessage(rating, rabbitQueue, rabbitChannel)
+			if err = sendMessage(rating, rabbitQueue, rabbitChannel); err != nil {
+				fmt.Printf("Could not send data to RabbitMQ: %v", err)
+			}
+
 		case <-osstop:
 			stop = true
 			fmt.Println("\nNode stop has been requested")
