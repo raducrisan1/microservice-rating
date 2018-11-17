@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -18,41 +19,63 @@ func failOnError(err error, msg string) {
 }
 
 func main() {
-	conn, err := grpc.Dial("localhost:3000", grpc.WithInsecure())
+	conn, err := grpc.Dial("localhost:3001", grpc.WithInsecure())
 	failOnError(err, "Could not connect to StockInfo gRPC server")
 	defer conn.Close()
 
 	stockInfoClient := stockinfo.NewStockInfoServiceClient(conn)
+
 	rabbitQueue, rabbitChannel, err := setupRabbitMqWriter()
 	failOnError(err, "Could not setup rabbitMq link to write data")
 	defer rabbitChannel.Close()
 
-	ticker := time.Tick(time.Second * 5)
-	pulse := setupsignal(ticker)
-	for {
-		startTime, _ := time.Parse(time.RFC3339, "2018-11-10 09:30Z")
-		endTime, _ := time.Parse(time.RFC3339, "2018-11-10 10:00Z")
-		req := &stockinfo.StockInfoRequest{
-			Stockname:  "NVDA",
-			Start:      startTime.Unix(),
-			End:        endTime.Unix(),
-			Resolution: 300}
+	//every 5 seconds, a call to stockinfo microservice is made.
 
-		res, err := stockInfoClient.StockInfo(nil, req)
-		rating := stockinfo.StockRating{
-			Rating:         int32(rand.Intn(5) + 1),
-			Islongposition: rand.Intn(2) > 0,
-			Stockname:      res.Stockname,
-			Timestamp:      time.Now().Unix()}
+	impulse := make(chan int, 2)
 
-		if err != nil {
-			fmt.Printf("Could not obtain data from the gRPC service StockInfo: %v", err)
-			continue
+	go func() {
+		impulse <- 1
+	}()
+
+	ticker := time.Tick(time.Second * 3)
+	osstop := setupsignal()
+	stop := false
+	for !stop {
+		select {
+		case <-ticker:
+			impulse <- 1
+		case <-impulse:
+			startTime, _ := time.Parse(time.RFC3339, "2018-11-10 09:30Z")
+			endTime, _ := time.Parse(time.RFC3339, "2018-11-10 10:00Z")
+			req := new(stockinfo.StockInfoRequest)
+			req.Stockname = "NVDA"
+			req.Start = startTime.Unix()
+			req.End = endTime.Unix()
+			req.Resolution = 300
+			res, err := stockInfoClient.StockInfo(context.Background(), req)
+			if err != nil {
+				fmt.Printf("An error occurred receiving data from gRPC stockinfo: %s\n", err)
+				continue
+			}
+
+			//augment the stockinfo response with a random rating and send it to RabbitMQ for further processing
+			rating := new(stockinfo.StockRating)
+			rating.Rating = int32(rand.Intn(5) + 1)
+			rating.Islongposition = rand.Intn(2) > 0
+			rating.Stockname = res.Stockname
+			rating.Timestamp = time.Now().Unix()
+
+			if err != nil {
+				fmt.Printf("Could not obtain data from the gRPC service StockInfo: %v", err)
+				continue
+			}
+
+			err = sendMessage(rating, rabbitQueue, rabbitChannel)
+		case <-osstop:
+			stop = true
+			fmt.Println("\nNode stop has been requested")
 		}
-		exitflag := <-pulse
-		if exitflag == 1 {
-			break
-		}
-		err = sendMessage(&rating, rabbitQueue, rabbitChannel)
 	}
+
+	fmt.Println("The node has been stopped")
 }
