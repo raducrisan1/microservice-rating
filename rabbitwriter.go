@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/raducrisan1/microservice-rating/stockinfo"
@@ -10,7 +11,8 @@ import (
 )
 
 func newRabbitMqWriter() (*amqp.Queue, *amqp.Channel, *amqp.Connection, error) {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	addr := os.Getenv("RABBITMQ_ADDR")
+	conn, err := amqp.Dial(addr)
 	failOnError(err, "could not open the connection to rabbitmq exchange")
 
 	ch, err := conn.Channel()

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/raducrisan1/microservice-rating/stockinfo"
@@ -19,7 +21,8 @@ func failOnError(err error, msg string) {
 }
 
 func main() {
-	conn, err := grpc.Dial("localhost:3001", grpc.WithInsecure())
+	addr := os.Getenv("STOCKINFO_GRPC_ADDR")
+	conn, err := grpc.Dial(addr, grpc.WithInsecure())
 	failOnError(err, "Could not connect to StockInfo gRPC server")
 	defer conn.Close()
 
@@ -36,8 +39,12 @@ func main() {
 		impulse <- 1
 	}()
 
-	fmt.Printf("The rating node started")
-	ticker := time.Tick(time.Second * 3)
+	log.Println("The rating node started")
+	seconds := 3
+	if intervalInt, err := strconv.Atoi(os.Getenv("RATING_INTERVAL")); err == nil {
+		seconds = intervalInt
+	}
+	ticker := time.Tick(time.Second * time.Duration(seconds))
 	osstop := setupsignal()
 	stop := false
 	for !stop {
@@ -81,5 +88,5 @@ func main() {
 		}
 	}
 
-	fmt.Println("The node has been stopped")
+	log.Println("The node has been stopped")
 }

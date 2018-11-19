@@ -1,0 +1,67 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  labels:
+    app: rating
+  name: rating
+  namespace: itdays
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 3
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: rating
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: rating
+    spec:
+      containers:
+      - env:
+        - name: RABBITMQ_ADDR
+          valueFrom:
+            configMapKeyRef:
+              key: RABBITMQ_ADDR
+              name: rating-config
+        - name: RATING_INTERVAL
+          valueFrom:
+            configMapKeyRef:
+              key: RATING_INTERVAL
+              name: rating-config
+        - name: STOCKINFO_GRPC_ADDR
+          valueFrom:
+            configMapKeyRef:
+              key: STOCKINFO_GRPC_ADDR
+              name: rating-config
+        image: gcr.io/itdays-201118/microservice-rating:latest
+        imagePullPolicy: Always
+        name: microservice-rating
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+data:
+  RABBITMQ_ADDR: amqp://rabbit:5672/
+  RATING_INTERVAL: "30"
+  STOCKINFO_GRPC_ADDR: stockinfo-service.itdays:3001
+kind: ConfigMap
+metadata:  
+  labels:
+    app: rating
+  name: rating-config
+  namespace: itdays  
